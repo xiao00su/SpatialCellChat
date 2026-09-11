@@ -235,13 +235,11 @@ computeCommunProb <- function (
         if (i > nLR1) {
           P1_Pspatial@x <- P1_Pspatial@x * adj.contact@x
         }
-
-        # if P1_Pspatial is all-zero matrix, iteration can be terminated in advance
-        if (sum(P1_Pspatial) == 0){
-          # For test: sum(P1_Pspatial) == 0
-          Pnull.cell = P1_Pspatial
-          dimnames(Pnull.cell) <- list(NULL,NULL)
-          return(Pnull.cell)
+                
+        # cas simple
+        if (!use.AGAN || all(P1_Pspatial@x == 0)) {
+          result <- P1_Pspatial
+            
         } else {
 
           data.agonist <- computeExpr_agonist(
@@ -253,11 +251,8 @@ computeCommunProb <- function (
             n = n
           )
 
-          # P_ = P1*Pspatial*P2
           P_ <- myElementwiseProduct(P1_Pspatial,data.agonist)
 
-
-          # data.antagonist => P3
           data.antagonist <- computeExpr_antagonist(
             data.use = data.use,
             pairLRsig,
