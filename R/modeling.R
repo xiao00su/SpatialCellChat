@@ -211,9 +211,9 @@ computeCommunProb <- function (
   
   Prob.cell_ <- with_progress({
     
-    p <- progressor(along = seq_len(nLR))
+    p <- progressr::progressor(along = seq_len(nLR))
     
-    future_lapply(
+    future.apply::future_lapply(
       X = seq_len(nLR),
       future.seed = TRUE,
       
