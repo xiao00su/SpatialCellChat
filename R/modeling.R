@@ -276,7 +276,7 @@ computeCommunProb <- function (
         result
       }
     )
-      })
+  })
 
   # bind the Prob.cell `list` => a `sparse3Darray`
   # then the Prob.cell's shape will be (nC,nC,nLR)
