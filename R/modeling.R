@@ -39,40 +39,33 @@ computeCommunProb <- function (
     use.AGAN = T,
     contact.dependent = TRUE,
     contact.range = 10,
-    contact.dependent.forced = FALSE
-) {
+    contact.dependent.forced = FALSE) {
 
- if (raw.use) {
+    # 是否使用raw data
+    if (raw.use) {
     data <- object@data.signaling
     # scale the elements
     data@x <- data@x/max(data@x)
     data.use <- as.matrix(data)
-
-  } else {
-    data <- object@data.project
-    # scale
-    data.use <- data/max(data)
-  }
-
-  if (is.null(LR.use)) {
-    pairLR.use <- object@LR$LRsig
-  } else {
-    if (length(unique(LR.use$annotation)) > 1) {
-      LR.use$annotation <-
-        factor(
-          LR.use$annotation,
-          levels = c(
-            "Secreted Signaling",
-            "ECM-Receptor",
-            "Non-protein Signaling",
-            "Cell-Cell Contact"
-          )
-        )
-      LR.use <- LR.use[order(LR.use$annotation), , drop = FALSE]
-      LR.use$annotation <- as.character(LR.use$annotation)
+    } else {
+        data <- object@data.project
+        # scale
+        data.use <- data/max(data)
     }
-    pairLR.use <- LR.use
-  }
+
+    # 只分析指定的LR对  
+    if (is.null(LR.use)) {
+        pairLR.use <- object@LR$LRsig
+    } else {
+        if (length(unique(LR.use$annotation)) > 1) { 
+            LR.use$annotation <- factor(LR.use$annotation,
+                                        levels = c( "Secreted Signaling", "ECM-Receptor", 
+                                                   "Non-protein Signaling", "Cell-Cell Contact" ) ) 
+            LR.use <- LR.use[order(LR.use$annotation), , drop = FALSE]
+            LR.use$annotation <- as.character(LR.use$annotation) 
+        }
+        pairLR.use <- LR.use
+    }
 
   complex_input <- object@DB$complex
   cofactor_input <- object@DB$cofactor
@@ -104,7 +97,7 @@ computeCommunProb <- function (
   ratio <- object@images$spatial.factors[["ratio"]]
   if(is.null(tol)) tol <- object@images$spatial.factors[["tol"]] else NULL
 
-  # compute the cell-to-cell distances
+  # 计算cell-to-cell distances
   # res is a list object, containing `d.spatial` matrix and `adj.contact` matrix!
   res <- computeCellDistance(coordinates = data.spatial,
                              ratio = ratio,
@@ -190,12 +183,13 @@ computeCommunProb <- function (
   # index.antagonist <- which(!is.na(pairLRsig$antagonist) & pairLRsig$antagonist != "")
 
   # Compute the communication probability/strength between any interacting individual cells for each LR pair
-    myElementwiseProduct_fast <- function(SparseMat, DenseVec) {
-    SparseMat@x <- SparseMat@x *
-      DenseVec[SparseMat@i + 1] *
-      DenseVec[rep(seq_len(ncol(SparseMat)) - 1, diff(SparseMat@p)) + 1]
     
-    SparseMat
+    myElementwiseProduct_fast <- function(SparseMat, DenseVec) {
+        SparseMat@x <- SparseMat@x *
+        DenseVec[SparseMat@i + 1] *
+        DenseVec[rep(seq_len(ncol(SparseMat)) - 1, diff(SparseMat@p)) + 1]
+        
+        SparseMat
   }
   
   # Compute the communication probability/strength between any interacting individual cells for each LR pair
@@ -273,8 +267,10 @@ computeCommunProb <- function (
     )
   })
 
-  # bind the Prob.cell `list` => a `sparse3Darray`
-  # then the Prob.cell's shape will be (nC,nC,nLR)
+    # print('All LR pair is done')
+    # 每个 LR pair 产出的 P1_Pspatial 是一个 N×N 稀疏矩阵，要全部驻留内存才能合成 3D array。
+    # bind the Prob.cell `list` => a `sparse3Darray`
+    # then the Prob.cell's shape will be (nC,nC,nLR)
   Prob.cell <- my_as_sparse3Darray(Prob.cell_)
   cat(cli.symbol(),"The number of cells and L-R pairs in Dim(Prob.cell):",dim(Prob.cell),"\n")
 
