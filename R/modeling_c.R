@@ -315,7 +315,7 @@ computeCommunProbX <- function (
 }
 
 
-#' @title filterProbability
+#' @title filterProbabilityX
 #' @description
 #' Filter out statistically non-significant communication probability at the level of individual cells after running \link{computeCommunProb}
 #'
