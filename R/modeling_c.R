@@ -8,6 +8,25 @@ net3Darray <- function(object, use.raw = FALSE ) {
   return(object)
 }
 
+#' @description 用my_as_sparse3Darray将list形式的 转换成3D稀疏array, 并存入net槽的prob.cell
+#' @export
+combinePathway <- function(chat=NULL, tmps=NULL ) {
+  for ( i in seq_along(tmps) ) {
+    chat@net$tmp$prob.cell <- c(chat@net$tmp$prob.cell, tmps[[i]]$prob.cell)
+    chat@net$tmp$Lavg <- rbind(chat@net$tmp$Lavg, tmps[[i]]$Lavg)
+    chat@net$tmp$Ravg <- rbind(chat@net$tmp$Ravg, tmps[[i]]$Ravg)
+    chat@net$tmp$ligand <- c(chat@net$tmp$ligand, tmps[[i]]$ligand)
+    chat@net$tmp$receptor <- c(chat@net$tmp$receptor, tmps[[i]]$receptor)
+  }
+  orderX <- match(chat@LR$LRsig$interaction_name, names(chat@net$tmp$prob.cell))
+  chat@net$tmp$prob.cell <- chat@net$tmp$prob.cell[orderX]
+  chat@net$tmp$Lavg <-  chat@net$tmp$Lavg[orderX, , drop = FALSE]
+  chat@net$tmp$Ravg <-  chat@net$tmp$Ravg[orderX, , drop = FALSE]
+  chat@net$tmp$ligand <-  chat@net$tmp$ligand[orderX]
+  chat@net$tmp$receptor <-  chat@net$tmp$receptor[orderX]
+  return(chat)
+}
+
 
 #' computeCommunProbX
 #'
@@ -37,20 +56,13 @@ net3Darray <- function(object, use.raw = FALSE ) {
 #' @export
 #'
 #' @examples
-computeCommunProbX <- function (
-    object,
-    LR.use = NULL,
-    raw.use = TRUE,
-    Kh = 0.5,
-    n = 1,
-    distance.use = TRUE,
-    tol = NULL, # will be removed in the future
-    interaction.range = 250,
-    scale.distance = 0.01,
-    use.AGAN = T,
-    contact.dependent = TRUE,
-    contact.range = 10,
-    contact.dependent.forced = FALSE) {
+computeCommunProbX <- function(object, LR.use = NULL, raw.use = TRUE, 
+                               Kh = 0.5, n = 1, 
+                               distance.use = TRUE, tol = NULL, 
+                               interaction.range = 250, 
+                               use.AGAN = T, scale.distance = 0.01,
+                               contact.dependent = TRUE, contact.range = 10,
+                               contact.dependent.forced = FALSE){
   
   #  选择 data.signaling 或者 data.project
   if (raw.use) {
@@ -262,7 +274,7 @@ computeCommunProbX <- function (
           result <- myElementwiseProduct_fast(P_, data.antagonist)
         }
         
-        result@x[abs(result@x) < 0.00001] <- 0
+        result@x[abs(result@x) < 0.0001] <- 0
         result@x[is.na(result@x)] <- 0
         result <- Matrix::drop0(result) # 移除 0 值，增加稀疏度
         
@@ -290,7 +302,8 @@ computeCommunProbX <- function (
   
   # 关键优化 4：拒绝三份拷贝！只保留 CellChat 必需的最少变量
   # 将 Tmp 中的 prob.cell 指向已经给出的对象或直接赋 NULL，避免重构数据副本
-  Tmp <- list(prob.cell = Prob.cell_, Lavg = dataLavg, Ravg = dataRavg)   
+  # 记录受体和配体的名字, 为Lvag和Ravg的rownames, 为combine pathway batch作准备
+  Tmp <- list(prob.cell = Prob.cell_, Lavg = dataLavg, Ravg = dataRavg, ligand=geneL, receptor=geneR)   
   net <- list(prob.cell = NULL, tmp = Tmp)  
   # 释放内存垃圾
   rm(Prob.cell_)
@@ -299,7 +312,7 @@ computeCommunProbX <- function (
   execution.time = Sys.time() - ptm
   object@options$run.time <- as.numeric(execution.time,
                                         units = "secs")
-  object@images[["result.computeCellDistance"]] <- res
+  object@images[["result.computeCellDistance"]] <- res # 保存细胞距离
   object@options$parameter <- list(
     raw.use = raw.use, ratio = ratio,tol = tol, Kh = Kh, n = n, nLR = nLR, nLR1 = nLR1,
     scale.distance = scale.distance, use.AGAN = use.AGAN, distance.use = distance.use,
@@ -397,14 +410,17 @@ filterProbabilityX <- function (
       
       return(Prob.cell.i)
     }, simplify = F, hint.message = "filtering...")
-    prob.cell <- my_as_sparse3Darray(prob.cell_)
-    dimnames(prob.cell) <- list(cell.names, cell.names, pair.LR.use)
+    
+    # 用net3Darray,分开做, 以配合pathway batch
+    # prob.cell <- my_as_sparse3Darray(prob.cell_)
+    # dimnames(prob.cell) <- list(cell.names, cell.names, pair.LR.use)
+    # object@net$prob.cell <- prob.cell
+    
     names(prob.cell_) <- pair.LR.use
-    object@net$prob.cell <- prob.cell
     object@net$tmp$prob.cell <- prob.cell_
     
     cat(cli.symbol(1), "Filtering is done.\n")
     return(object)
-  } # whether to filter out
+  } 
 }
 
