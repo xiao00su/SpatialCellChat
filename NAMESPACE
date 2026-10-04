@@ -17,6 +17,7 @@ export(buildSNN)
 export(checkGeneSymbol)
 export(cli.symbol)
 export(colorRamp3)
+export(combinePathway)
 export(communicationDistPlot)
 export(communicationDistPlot2)
 export(compareInteractions)
@@ -31,8 +32,8 @@ export(computeCellDistance)
 export(computeColocalization)
 export(computeCommunField)
 export(computeCommunProb)
-export(computeCommunProbX)
 export(computeCommunProbPathway)
+export(computeCommunProbX)
 export(computeEigengap)
 export(computeEnrichmentScore)
 export(computeExprGroup_agonist)
@@ -88,6 +89,7 @@ export(my_as_sparse3Darray)
 export(my_future_lapply)
 export(my_future_sapply)
 export(my_obj_size)
+export(net3Darray)
 export(netAnalysis_computeCentrality)
 export(netAnalysis_contribution)
 export(netAnalysis_diff_signalingRole_scatter)
@@ -188,152 +190,193 @@ import(reticulate)
 import(rlang)
 importClassesFrom(Matrix,dgCMatrix)
 importFrom(BiocGenerics,as.data.frame)
-importFrom(BiocNeighbors,KmknnParam)
-importFrom(BiocNeighbors,queryKNN)
-importFrom(ComplexHeatmap,Heatmap)
-importFrom(ComplexHeatmap,HeatmapAnnotation)
-importFrom(ComplexHeatmap,anno_barplot)
-importFrom(ComplexHeatmap,draw)
-importFrom(ComplexHeatmap,rowAnnotation)
+importFrom(BiocNeighbors,
+  KmknnParam,
+  queryKNN
+)
+importFrom(ComplexHeatmap,
+  Heatmap,
+  HeatmapAnnotation,
+  anno_barplot,
+  draw,
+  rowAnnotation
+)
 importFrom(FNN,get.knn)
-importFrom(Matrix,Matrix)
-importFrom(Matrix,colMeans)
-importFrom(Matrix,colSums)
-importFrom(Matrix,nnzero)
-importFrom(Matrix,rowMeans)
-importFrom(Matrix,rowSums)
-importFrom(Matrix,sparseMatrix)
+importFrom(Matrix,
+  Matrix,
+  colMeans,
+  colSums,
+  nnzero,
+  rowMeans,
+  rowSums,
+  sparseMatrix
+)
 importFrom(RColorBrewer,brewer.pal)
 importFrom(RSpectra,eigs_sym)
-importFrom(Rcpp,evalCpp)
-importFrom(Rcpp,sourceCpp)
-importFrom(circlize,chordDiagram)
-importFrom(circlize,circos.clear)
-importFrom(circlize,circos.text)
-importFrom(circlize,circos.track)
-importFrom(circlize,get.cell.meta.data)
-importFrom(cli,col_br_red)
-importFrom(cli,col_green)
-importFrom(cli,col_grey)
-importFrom(cli,col_red)
-importFrom(cli,symbol)
-importFrom(colorspace,HLS)
-importFrom(colorspace,HSV)
-importFrom(colorspace,LAB)
-importFrom(colorspace,LUV)
-importFrom(colorspace,RGB)
-importFrom(colorspace,XYZ)
-importFrom(colorspace,coords)
-importFrom(colorspace,hex)
-importFrom(colorspace,sRGB)
-importFrom(cowplot,draw_label)
-importFrom(cowplot,ggdraw)
-importFrom(cowplot,plot_grid)
-importFrom(dplyr,"%>%")
-importFrom(dplyr,arrange)
-importFrom(dplyr,desc)
-importFrom(dplyr,group_by)
-importFrom(dplyr,groups)
-importFrom(dplyr,mutate)
-importFrom(dplyr,n)
-importFrom(dplyr,select)
-importFrom(dplyr,starts_with)
-importFrom(dplyr,summarise)
-importFrom(dplyr,summarize)
-importFrom(dplyr,top_n)
-importFrom(future,nbrOfWorkers)
-importFrom(future,plan)
-importFrom(future.apply,future_lapply)
-importFrom(future.apply,future_sapply)
+importFrom(Rcpp,
+  evalCpp,
+  sourceCpp
+)
+importFrom(circlize,
+  chordDiagram,
+  circos.clear,
+  circos.text,
+  circos.track,
+  get.cell.meta.data
+)
+importFrom(cli,
+  col_br_red,
+  col_green,
+  col_grey,
+  col_red,
+  symbol
+)
+importFrom(colorspace,
+  HLS,
+  HSV,
+  LAB,
+  LUV,
+  RGB,
+  XYZ,
+  coords,
+  hex,
+  sRGB
+)
+importFrom(cowplot,
+  draw_label,
+  ggdraw,
+  plot_grid
+)
+importFrom(dplyr,
+  "%>%",
+  arrange,
+  desc,
+  group_by,
+  groups,
+  mutate,
+  n,
+  select,
+  starts_with,
+  summarise,
+  summarize,
+  top_n
+)
+importFrom(future,
+  nbrOfWorkers,
+  plan
+)
+importFrom(future.apply,
+  future_lapply,
+  future_sapply
+)
 importFrom(ggnetwork,geom_nodetext_repel)
-importFrom(ggplot2,aes)
-importFrom(ggplot2,aes_string)
-importFrom(ggplot2,annotation_raster)
-importFrom(ggplot2,coord_cartesian)
-importFrom(ggplot2,coord_flip)
-importFrom(ggplot2,element_blank)
-importFrom(ggplot2,element_line)
-importFrom(ggplot2,element_rect)
-importFrom(ggplot2,element_text)
-importFrom(ggplot2,geom_bar)
-importFrom(ggplot2,geom_text)
-importFrom(ggplot2,ggplot)
-importFrom(ggplot2,ggplot_build)
-importFrom(ggplot2,ggtitle)
-importFrom(ggplot2,scale_color_manual)
-importFrom(ggplot2,scale_fill_manual)
-importFrom(ggplot2,scale_x_discrete)
-importFrom(ggplot2,theme)
-importFrom(ggplot2,theme_classic)
+importFrom(ggplot2,
+  aes,
+  annotation_raster,
+  coord_cartesian,
+  coord_flip,
+  element_blank,
+  element_line,
+  element_rect,
+  element_text,
+  geom_bar,
+  geom_text,
+  ggplot,
+  ggplot_build,
+  ggtitle,
+  scale_color_manual,
+  scale_fill_manual,
+  scale_x_discrete,
+  theme,
+  theme_classic
+)
 importFrom(ggpubr,stat_compare_means)
 importFrom(ggrepel,geom_text_repel)
-importFrom(grDevices,adjustcolor)
-importFrom(grDevices,col2rgb)
-importFrom(grDevices,colorRampPalette)
-importFrom(grDevices,dev.off)
-importFrom(grDevices,hcl)
-importFrom(grDevices,pdf)
-importFrom(grDevices,recordPlot)
+importFrom(grDevices,
+  adjustcolor,
+  col2rgb,
+  colorRampPalette,
+  dev.off,
+  hcl,
+  pdf,
+  recordPlot
+)
 importFrom(graphics,symbols)
-importFrom(grid,gpar)
-importFrom(grid,grid.draw)
-importFrom(grid,grid.grabExpr)
-importFrom(grid,grid.newpage)
-importFrom(grid,popViewport)
-importFrom(grid,pushViewport)
-importFrom(grid,textGrob)
-importFrom(grid,unit)
-importFrom(grid,viewport)
-importFrom(igraph,E)
-importFrom(igraph,V)
-importFrom(igraph,alpha.centrality)
-importFrom(igraph,authority_score)
-importFrom(igraph,betweenness)
-importFrom(igraph,degree)
-importFrom(igraph,eigen_centrality)
-importFrom(igraph,ends)
-importFrom(igraph,get.edgelist)
-importFrom(igraph,graph.complementer)
-importFrom(igraph,graph_from_adjacency_matrix)
-importFrom(igraph,hub_score)
-importFrom(igraph,in_circle)
-importFrom(igraph,layout_)
-importFrom(igraph,page_rank)
-importFrom(igraph,strength)
+importFrom(grid,
+  gpar,
+  grid.draw,
+  grid.grabExpr,
+  grid.newpage,
+  popViewport,
+  pushViewport,
+  textGrob,
+  unit,
+  viewport
+)
+importFrom(igraph,
+  E,
+  V,
+  alpha.centrality,
+  authority_score,
+  betweenness,
+  degree,
+  eigen_centrality,
+  ends,
+  get.edgelist,
+  graph.complementer,
+  graph_from_adjacency_matrix,
+  hub_score,
+  in_circle,
+  layout_,
+  page_rank,
+  strength
+)
 importFrom(irlba,irlba)
-importFrom(ks,hpi)
-importFrom(ks,kde)
+importFrom(ks,
+  hpi,
+  kde
+)
 importFrom(magrittr,"%>%")
-importFrom(methods,as)
-importFrom(methods,is)
-importFrom(methods,new)
-importFrom(methods,setClass)
-importFrom(methods,setClassUnion)
-importFrom(methods,slot)
+importFrom(methods,
+  as,
+  is,
+  new,
+  setClass,
+  setClassUnion,
+  slot
+)
 importFrom(patchwork,wrap_plots)
 importFrom(pbapply,pbsapply)
 importFrom(plyr,mapvalues)
 importFrom(reshape2,melt)
 importFrom(reticulate,import)
-importFrom(scales,hue_pal)
-importFrom(scales,percent)
+importFrom(scales,
+  hue_pal,
+  percent
+)
 importFrom(shape,Arrows)
-importFrom(sna,flowbet)
-importFrom(sna,infocent)
-importFrom(spatstat.sparse,as.sparse3Darray)
-importFrom(spatstat.sparse,sparse3Darray)
-importFrom(stats,aggregate)
-importFrom(stats,cutree)
-importFrom(stats,dist)
-importFrom(stats,dnorm)
-importFrom(stats,hclust)
-importFrom(stats,median)
-importFrom(stats,p.adjust)
-importFrom(stats,prcomp)
-importFrom(stats,quantile)
-importFrom(stats,sd)
-importFrom(stats,setNames)
-importFrom(stats,wilcox.test)
+importFrom(sna,
+  flowbet,
+  infocent
+)
+importFrom(spatstat.sparse,
+  as.sparse3Darray,
+  sparse3Darray
+)
+importFrom(stats,
+  aggregate,
+  cutree,
+  dist,
+  dnorm,
+  hclust,
+  median,
+  p.adjust,
+  prcomp,
+  quantile,
+  sd,
+  setNames,
+  wilcox.test
+)
 importFrom(stringr,str_split)
 importFrom(svglite,svglite)
 useDynLib(SpatialCellChat, .registration = TRUE)
