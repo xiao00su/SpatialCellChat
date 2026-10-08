@@ -8,7 +8,8 @@ net3Darray <- function(object, use.raw = FALSE ) {
   return(object)
 }
 
-#' @description 用my_as_sparse3Darray将list形式的 转换成3D稀疏array, 并存入net槽的prob.cell
+#' 把分批次算出来的细胞级通信中间结果（每批一个 net$tmp）拼回主对象
+#' @description 
 #' @export
 combinePathway <- function(chat=NULL, tmps=NULL ) {
   for ( i in seq_along(tmps) ) {
@@ -411,7 +412,7 @@ filterProbabilityX <- function (
       return(Prob.cell.i)
     }, simplify = F, hint.message = "filtering...")
     
-    # 用net3Darray,分开做, 以配合pathway batch
+    # 用net3Darray,分开做, 减少内存消耗
     # prob.cell <- my_as_sparse3Darray(prob.cell_)
     # dimnames(prob.cell) <- list(cell.names, cell.names, pair.LR.use)
     # object@net$prob.cell <- prob.cell
@@ -423,4 +424,471 @@ filterProbabilityX <- function (
     return(object)
   } 
 }
+
+
+#' Filter cell-cell communication if there are only few number of cells in certain cell groups or only few interactions
+#'
+#' @param object CellChat object
+#' @param min.cells the minimum number of cells required in each cell group for filtering cell group-level communication
+#' @param min.links the minimum number of links/interactions required in the ligand-receptor pair for filtering individual cell-level communication
+#' @param min.cells.sr the minimum number of cells required as senders or receivers for filtering individual cell-level communication
+#' @return CellChat object with an updated slot net
+#' @export
+#'
+filterCommunicationX <- function(object, min.cells = 10, min.links = 5, min.cells.sr = 5) {
+  
+  if (!is.null(min.cells)) {
+    message("Filter cell-group level communication...",'\n')
+    net <- object@net
+    cell.excludes <- which(as.numeric(table(object@idents)) < min.cells)
+    if (length(cell.excludes) > 0) {
+      cat(cli.symbol(),"The cell-cell communication related with the following cell groups 
+          are excluded due to the few number of cells: ", levels(object@idents)[cell.excludes],'\n')
+      # dim(net$prob) = nCellGroup x nCellGroup x nPairLRsig
+      net$prob[cell.excludes,,] <- 0
+      net$prob[,cell.excludes,] <- 0
+      if (!is.null(net$pval)) {
+        net$pval[net$prob == 0] <- 1
+      }
+      object@net <- net
+    }
+    rm(net)
+    gc()
+  }
+  
+  #### if ("prob.cell" %in% names(object@net)) {
+  if (!is.null(object@net$tmp$prob.cell)) {
+    net <- object@net
+    #### prob.cell <- net$prob.cell
+    prob.cell_ <- net$tmp$prob.cell # a list
+    
+    if (!is.null(min.links) | !is.null(min.cells.sr)) {
+      message("Filter individual cell-level communication...",'\n')
+      
+      prob.sum <- purrr::map_dbl(.x = prob.cell_, 
+                                 .f = function(Mat){return(length(Mat@x))} )
+      
+      ##### dimArr <- dim(prob.cell)
+      nCells <- nrow(prob.cell_[[1]])
+      nLRs <- length(prob.cell_)
+      LRnames <- names(prob.cell_)
+      dimArr <- c(nCells, nCells, nLRs)
+      
+      # define a allzero matrix (CsparseMatrix)
+      AllzeroMat <- Matrix::sparseMatrix(
+        i = integer(0),
+        j = integer(0),
+        x = numeric(0),
+        repr = "C", # default repr in CellChat
+        dims = dimArr[c(1, 2)],
+        # dimnames = dns[c(1,2)] # too large, not use!
+        dimnames = list(NULL,NULL),
+        index1 = T # i and j are interpreted as 1-based indices, following the R convention
+      )
+      
+      # filter communication according to min.links
+      gc()
+      if (!is.null(min.links)) {
+        cat(cli.symbol(),"Filter communication according to min.links...\n")
+        idx.signaling.excludes <- which((prob.sum < min.links) & (prob.sum > 0))
+        if (length(idx.signaling.excludes) > 0) {
+          cat("The cell-cell communication related with #", length(idx.signaling.excludes),
+              'L-R pairs are excluded due to the few number of interactions.','\n')
+          
+          # prob.cell[,,idx.signaling.excludes] <- 0
+          pb <- utils::txtProgressBar(min = 0, max = length(idx.signaling.excludes), style = 3, file = stderr(), width = 80);i=0
+          for (x in idx.signaling.excludes) {
+            prob.cell_[[x]] <- AllzeroMat
+            utils::setTxtProgressBar(pb = pb, value = (i=i+1))
+          } # forloop
+          close(con = pb)
+          
+        }
+      }
+      
+      # filter communication according to min.cell.sr
+      gc()
+      if (!is.null(min.cells.sr)) {
+        cat(cli.symbol(),"Filter communication according to min.cell.sr... \n")
+        ##### pathways0 <- dimnames(prob.cell)[[3]] # L-R pairs' names
+        pathways0 <- LRnames
+        if (is.null(min.links)) {
+          pathways <- pathways0[prob.sum > 0]
+        } else {
+          pathways <- pathways0[prob.sum >= max(1, min.links)] # Prevent `min.links` from being smaller than 1
+        }
+        
+        if (length(pathways)<1){
+          NULL # not filter
+        } else {
+          pathways.remove <- pbapply::pblapply(
+            X = seq_len(length(pathways)),
+            FUN = function(x) {
+              prob.cell.i <- prob.cell_[[ pathways[[x]] ]] > 0 # `prob.cell.i` is a logical sparse matrix
+              if ((sum(Matrix::rowSums(prob.cell.i) > 0) < min.cells.sr) | (sum(Matrix::colSums(prob.cell.i) > 0) < min.cells.sr)) {
+                gc()
+                return(pathways[[x]])
+              }
+            }
+          )
+          pathways.remove <- unlist(pathways.remove) # vec2vec
+          pathways.remove.idx <- which(pathways0 %in% pathways.remove)
+          
+          if (length(pathways.remove) > 0) {
+            cat(
+              "The cell-cell communication related with #",
+              length(pathways.remove),
+              'L-R pairs are excluded due to the few number of sending/receiving cells.',
+              '\n'
+            )
+            
+            pb <- utils::txtProgressBar(min = 0, max = length(pathways.remove.idx), style = 3, file = stderr(),width = 80);i=0
+            for (x in pathways.remove.idx) {
+              prob.cell_[[x]] <- AllzeroMat
+              utils::setTxtProgressBar(pb = pb, value = (i=i+1))
+            } # forloop
+            close(con = pb)
+          }
+        }
+      }
+      
+      # update the obj
+      net$tmp$prob.cell <- prob.cell_ # a list
+      
+      #### dns <- dimnames(prob.cell) # dimnames
+      #### net$prob.cell <- my_as_sparse3Darray(prob.cell_)
+      #### dimnames(net$prob.cell) <- dns
+      
+      object@net <- net
+      cat(paste0(cli.symbol(1), 'Filtering cell-cell communication is done.<<< [', Sys.time(),']', '\n'))
+      
+    } # !is.null(min.links) | !is.null(min.cells.sr)
+  } else {
+    stop( cli.symbol(2), "Please run `computeCommunProb` to compute the 
+    communication probability/strengthbetween any interacting individual cells!")
+  }
+  return(object)
+}
+
+
+
+
+
+#' Compute group-level cell-cell communication
+#'
+#' @param object SpatialCellChat object with communication probabilities for pairwise individual cells
+#' @param group.by cell group information used for computing average communication probabilities
+#' @param avg.type methods for integrating communication probabilities per cell group
+#' @param type methods for computing the average gene expression per cell group.
+#' By default = "triMean", defined as a weighted average of the distribution's median and 
+#' its two quartiles (https://en.wikipedia.org/wiki/Trimean); 
+#' When setting `type = "truncatedMean"`, a value should be assigned to 'trim'. See the function `base::mean`.
+#' @param trim the fraction (0 to 0.25) of observations to be trimmed from each end of x before the mean is computed.
+#' @param do.permutation whether performing permutation test
+#' @param nboot the number of permutations
+#' @param seed.use set a random seed. By default, set the seed to 1.
+#' @param colocalization.use whether filtering out spatially distant cell groups 
+#' based on colocalization analysis between any cell groups
+#' @param thresh.colo removal of cell-cell communication with no significant colocalizations (fdr < 0.05)
+#' @inheritParams computeAvgCommunProb_LR_Avg
+#' @inheritParams computeAvgCommunProb_LR_Sum
+#'
+#' @return A CellChat object with updated slot 'net':
+#' object@net$prob is the inferred group-level communication probability (strength) array, 
+#' where the first, second and third dimensions represent 
+#' a source group, target group and ligand-receptor pair, respectively.
+#' object@net$pval is the corresponding p-values of each interaction
+#' @export
+#'
+computeAvgCommunProbX <- function(object, group.by = NULL, avg.type = c("avg","sum"),
+                                 min.percent = 0.1, min.cells.sr = 5, 
+                                 do.permutation = T, nboot = 100,
+                                 seed.use = 1L, colocalization.use = F, thresh.colo = 0.05) {
+  if (is.null(group.by)) {
+    group <- object@idents
+  } else {
+    if (!(group.by %in% colnames(object@meta))) {
+      stop("The 'group.by' is not a column name in the `object@meta`, which will be used for cell grouping.")
+    } else {
+      group <- object@meta[[group.by]]
+    }
+    if (!is.factor(group)) {
+      group <- factor(group)
+    }
+  }
+  
+  cat(cli.symbol(),"The cell groups used for averaging cell-cell communication are ", cli::col_red(levels(group)), '\n')
+  
+  numCluster <- nlevels(group)
+  if (numCluster != length(unique(group))) {
+    stop("Please check `unique(object@idents)` and ensure that the factor levels are correct!
+         You may need to drop unused levels using 'droplevels' function. e.g.,
+         `meta$labels = droplevels(meta$labels, exclude = setdiff(levels(meta$labels),unique(meta$labels)))`")
+  }
+  
+  if (object@options$parameter$raw.use) {
+    data <- object@data.signaling
+    # scale the elements
+    data@x <- data@x/max(data@x)
+    data.use <- as.matrix(data)
+  } else {
+    data <- object@data.project
+    # scale
+    data.use <- data/max(data)
+  }
+  
+  nC <- ncol(data.use)
+  
+  #### if ( is.null(object@net$prob.cell) ) {
+  if ( is.null(object@net$tmp) ) {
+    stop(cli.symbol(2),"Please run `computeCommunProb` to compute 
+         the communication probability/strength between any interacting individual cells! ")
+  } else {
+    #### prob.cell <- object@net$prob.cell
+    prob.cell_ <- object@net$tmp$prob.cell # a list
+  }
+  
+  #### LRsig <- dimnames(prob.cell)[[3]]
+  LRsig <- names(prob.cell_)
+  nLR <- length(LRsig)
+  
+  interaction_input <- object@DB$interaction
+  complex_input <- object@DB$complex
+  cofactor_input <- object@DB$cofactor
+  
+  pairLRsig <- interaction_input[LRsig, , drop = FALSE]
+  dataLavg <- object@net$tmp$Lavg
+  dataRavg <- object@net$tmp$Ravg
+  
+  avg.type <- match.arg(avg.type)
+  if(avg.type=="avg"){ computeAvgCommunProb_LR <- computeAvgCommunProb_LR_Avg
+  } else if (avg.type=="sum"){ computeAvgCommunProb_LR <- computeAvgCommunProb_LR_Sum }
+  
+  gc()
+  
+  if (colocalization.use) {
+    data.spatial <- object@images$coordinates
+    pval.colo = computeColocalization(coordinates = data.spatial, group = group, nboot = nboot, seed.use = seed.use)
+  } else { pval.colo <- matrix(0, nrow = numCluster, ncol = numCluster) }
+  
+  cat(paste0(cli.symbol(),'Compute group-level cell-cell communication... <<< [', Sys.time(),']'),'\n')
+  
+  Prob <- array(0, dim = c(numCluster,numCluster,nLR))
+  Pval <- array(1, dim = c(numCluster,numCluster,nLR))
+  dimnames(Prob) <- list(levels(group), levels(group), rownames(pairLRsig))
+  dimnames(Pval) <- dimnames(Prob)
+  
+  set.seed(seed.use)
+  
+  # retain dim-3, sum up dim-1 && dim-2, `prob.sum` stores each LR's number of cell-level links/interactions
+  prob.sum <- purrr::map_dbl(.x = prob.cell_, .f = function(Mat){return(length(Mat@x))})
+  names(prob.sum) <- LRsig
+  object@net$tmp$LRsig.CCC.counts <- prob.sum
+  LRsig.use.idx <- which(prob.sum > 0)
+  object@net$tmp$LRsig.use.idx <- LRsig.use.idx
+  gc()
+  
+  if(length(LRsig.use.idx) < 1){ stop("Each LR pair does not have any cell-level links/interactions.") }
+  
+  cat(cli.symbol(),"compute the average signaling per cell group...\n")
+  
+  Prob.avg_ <- my_future_sapply(
+    X = seq_len(length(LRsig.use.idx)),
+    FUN = function(x) {
+      i <- LRsig.use.idx[[x]] # one LR pair index
+      # compute the average signaling per cell group
+      prob.cell.i <- prob.cell_[[i]]
+      dataLR_temp <- cbind(dataLavg[i, ], dataRavg[i, ])
+      Prob.avg <- computeAvgCommunProb_LR(prob.cell.i, group = group, dataLR = dataLR_temp, 
+                                          min.percent = min.percent, min.cells.sr = min.cells.sr )
+      # Pnull <- as.vector(Prob.avg)
+      Prob.avg[pval.colo > thresh.colo] <- 0
+      # Prob: array(0, dim = c(numCluster,numCluster,nLR))
+      gc()
+      return(Prob.avg)
+    },
+    simplify = F # return a list
+  )
+  
+  print('All pathways are done.')
+  
+  for (x in seq_len( length(LRsig.use.idx) ) ) {
+    i <- LRsig.use.idx[[x]]
+    Prob[ , , i] <- Prob.avg_[[x]]
+  }
+  
+  # update `prob.sum` & `LRsig.use.idx` to do permutation
+  # retain dim-3, sum up dim-1 && dim-2, `prob.sum` stores each LR's number of group-level links/interactions before permutation
+  prob.sum <- apply(Prob > 0, 3, sum) # return a named vector
+  # each LR's number of group-level links/interactions
+  object@net$tmp$LRsig.GGC.counts <- prob.sum
+  
+  LRsig.use.idx <- which(prob.sum > 0)
+  if (do.permutation) {
+    cat(paste0(cli.symbol(),'Perform permutation test for group-level communication... <<< [', Sys.time(),']'),'\n')
+    permutation <- replicate(nboot, sample.int(nC, size = nC))
+    Pval_ <- my_future_lapply(
+      # LRsig.use.idx is a numeric vector
+      X = seq_len(length(LRsig.use.idx)),
+      FUN = function(x){
+        i <- LRsig.use.idx[[x]]
+        # compute the average signaling per cell group after permutation
+        prob.cell.i <- prob.cell_[[i]]
+        dataLR_temp <- cbind(dataLavg[i,], dataRavg[i,])
+        Pnull <- as.vector(Prob[ , , i])
+        
+        Pboot <- sapply(
+          X = 1:nboot,
+          FUN = function(nE) {
+            groupboot <- group[permutation[, nE]]
+            Pboot.avg <- computeAvgCommunProb_LR(
+              prob.cell.i,
+              group = groupboot,
+              dataLR = dataLR_temp,
+              min.percent = min.percent,
+              min.cells.sr = min.cells.sr
+            )
+            return(as.vector(Pboot.avg))
+          }
+        )
+        gc()
+        Pboot <- matrix(unlist(Pboot), nrow=length(Pnull), ncol = nboot, byrow = FALSE)
+        nReject <- rowSums(Pboot - Pnull > 0)
+        p = nReject/nboot
+        Pval.i <- matrix(p, nrow = numCluster, ncol = numCluster, byrow = FALSE)
+        return(Pval.i)
+      },
+      simplify = F, # return a list
+      hint.message = "do permutation..."
+    )
+    
+    for (x in seq_len(length(LRsig.use.idx))) {
+      # get correct index
+      i <- LRsig.use.idx[[x]]
+      # update the values
+      Pval[ , , i] <- Pval_[[x]]
+    }
+    
+    Pval[Prob == 0] <- 1
+    
+  } else { Pval <- NULL }
+  
+  # Pval[Prob == 0] <- 1
+  # dimnames(Prob) <- list(levels(group), levels(group), rownames(pairLRsig))
+  # dimnames(Pval) <- dimnames(Prob)
+  object@net$prob <- Prob
+  object@net$pval <- Pval
+  object@options$parameter$min.percent <- min.percent
+  object@options$parameter$min.cells.sr <- min.cells.sr
+  object@options$parameter$do.permutation <- do.permutation
+  
+  object@options$parameter$nboot <- nboot
+  object@options$parameter$avg.type <- avg.type
+  object@options$parameter$seed.use <- seed.use
+  object@options$parameter$colocalization.use <- colocalization.use
+  
+  object@options$parameter$thresh.colo <- thresh.colo
+  # object@net$tmp$Lavg <- NULL;object@net$tmp$Ravg <- NULL; # clean the cache
+  
+  if (colocalization.use) { object@images$colocalization <- pval.colo }
+  cat(paste0(cli.symbol(symbol = "success"),'Inference of group-level cell-cell communication is done. 
+             Parameter values are stored in `object@options$parameter` <<< [', Sys.time(),']'))
+  return(object)
+}
+
+
+
+#' Calculate the aggregated network by counting the number of links or summarizing the communication probability
+#'
+#' @param object CellChat object
+#' @param sources.use,targets.use,signaling,pairLR.use Please check the description in function \code{\link{subsetCommunication}}
+#' @param remove.isolate whether removing the isolate cell groups without any interactions when applying \code{\link{subsetCommunication}}
+#' @param thresh threshold of the p-value for determining significant interaction
+#' @param return.object whether return an updated CellChat object
+#' @importFrom  dplyr group_by summarize groups
+#' @importFrom stringr str_split
+#'
+#' @return Return an updated CellChat object:
+#' `object@net$count` is a matrix: rows and columns are sources and targets respectively, 
+#' and elements are the number of interactions between any two cell groups. 
+#' `object@net$weight` is also a matrix containing the interaction weights between any two cell groups
+#' `object@net$sum` is deprecated. Use `object@net$weight`
+#'
+#' @export
+#'
+aggregateNetX <- function(object, sources.use = NULL, targets.use = NULL, 
+                         signaling = NULL, pairLR.use = NULL, remove.isolate = TRUE, 
+                         thresh = 0.05, return.object = TRUE) {
+  net <- object@net
+  
+  # 将LRpair的cell cluster层数据进行求和(aggregate)
+  if (is.null(sources.use) & is.null(targets.use) & is.null(signaling) & is.null(pairLR.use)) {
+    prob <- net$prob
+    pval <- net$pval
+    pval[prob == 0] <- 1
+    prob[pval >= thresh] <- 0
+    net$count <- apply(prob > 0, c(1,2), sum)
+    net$weight <- apply(prob, c(1,2), sum)
+    net$weight[is.na(net$weight)] <- 0
+    net$count[is.na(net$count)] <- 0
+    net$LR.sig <- dimnames(prob)[[3]][apply(prob, 3, sum) > 0]
+  } else {
+    df.net <- subsetCommunication(object, slot.name = "net", 
+                                  sources.use = sources.use, targets.use = targets.use,
+                                  signaling = signaling, pairLR.use = pairLR.use, 
+                                  thresh = thresh)
+    df.net$source_target <- paste(df.net$source, df.net$target, sep = "_")
+    df.net2 <- df.net %>% group_by(source_target) %>% summarize(count = n(), .groups = 'drop')
+    df.net3 <- df.net %>% group_by(source_target) %>% summarize(prob = sum(prob), .groups = 'drop')
+    df.net2$prob <- df.net3$prob
+    a <- stringr::str_split(df.net2$source_target, "_", simplify = T)
+    df.net2$source <- as.character(a[, 1])
+    df.net2$target <- as.character(a[, 2])
+    cells.level <- levels(object@idents)
+    
+    if (remove.isolate) {
+      message("Isolate cell groups without any interactions are removed. To block it, set `remove.isolate = FALSE`")
+      df.net2$source <- factor(df.net2$source, levels = cells.level[cells.level %in% unique(df.net2$source)])
+      df.net2$target <- factor(df.net2$target, levels = cells.level[cells.level %in% unique(df.net2$target)])
+    } else {
+      df.net2$source <- factor(df.net2$source, levels = cells.level)
+      df.net2$target <- factor(df.net2$target, levels = cells.level)
+    }
+    
+    count <- tapply(df.net2[["count"]], list(df.net2[["source"]], df.net2[["target"]]), sum)
+    prob <- tapply(df.net2[["prob"]], list(df.net2[["source"]], df.net2[["target"]]), sum)
+    net$count <- count
+    net$weight <- prob
+    net$weight[is.na(net$weight)] <- 0
+    net$count[is.na(net$count)] <- 0
+  }
+  
+  # 将LRpair的cell层数据进行求和(aggregate)
+  if ( length(net$tmp$prob.cell) > 0L) {
+    tl <- net$tmp$prob.cell                    
+    N  <- nrow(tl[[1]])
+    
+    ii <- unlist(lapply(tl, function(m) m@i), use.names = FALSE) + 1L
+    jj <- unlist(lapply(tl, function(m) rep.int(seq_len(ncol(m)), diff(m@p))), use.names = FALSE)
+    xx <- unlist(lapply(tl, function(m) m@x), use.names = FALSE)
+    
+    net$weight.cell <- Matrix::sparseMatrix(i = ii, j = jj, x = xx, dims = c(N, N), index1 = TRUE)
+    net$count.cell  <- Matrix::sparseMatrix(i = ii, j = jj, x = rep.int(1, length(ii)), dims = c(N, N), index1 = TRUE)
+    net$LR.sig.cell <- names(tl)[vapply(tl, function(m) sum(m@x), numeric(1)) != 0]
+    
+    rm(ii, jj, xx); invisible(gc(FALSE))
+    
+    if (!is.null(sources.use) | !is.null(targets.use) | !is.null(signaling) | !is.null(pairLR.use)) {
+      message("Subsetting cells or signaling is not applicable to individual cell-based `prob.cell`!", '\n')
+    }
+  }
+  
+  if (return.object) {
+    object@net <- net
+    return(object)
+  } else { return(net) }
+}
+
+
+
 
