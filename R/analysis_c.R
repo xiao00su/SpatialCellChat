@@ -15,7 +15,9 @@
 #' @importFrom methods slot
 #' @importFrom future.apply future_lapply
 #'
-#' @return
+#' @return slot.name下, do.group=TRUE返回centr, 
+#' do.froup = FALSE, 返回centr.cell
+#' 
 #' @export
 #' 
 netAnalysis_computeCentralityX <- function(object = NULL, net=NULL, slot.name = "net", 
@@ -108,7 +110,8 @@ netAnalysis_computeCentralityX <- function(object = NULL, net=NULL, slot.name = 
   dimnames(centr.all) <- list(centr.name, node.names,signaling.name)
   cat(cli.symbol(1), "Computing Net Centrality is done.\n")
   
-  if (is.null(object)) { return(centr.all)
+  if (is.null(object)) { 
+    return(centr.all)
   } else { 
     if (do.group) {
       methods::slot(object, slot.name)[["centr"]] <- centr.all
