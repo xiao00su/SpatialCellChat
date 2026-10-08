@@ -340,12 +340,7 @@ computeCommunProbX <- function(object, LR.use = NULL, raw.use = TRUE,
 #'
 #' @return CellChat object
 #' @export
-filterProbabilityX <- function (
-    object,
-    nboot = 100,
-    seed.use = 666L,
-    thresh = 0.05
-){
+filterProbabilityX <- function(object, nboot = 100, seed.use = 666L, thresh = 0.05 ){
   quantile.prob <- 1-thresh
   if(quantile.prob==0){
     cat(cli.symbol(1),"Do not filter any CCC probability!")
@@ -384,11 +379,9 @@ filterProbabilityX <- function (
     
     prob.cell_ <- my_future_lapply(X = 1:nLR, FUN = function(i) {
       
-      if (i <= nLR1) {
-        d_spatial <- d.spatial
-      } else {
-        d_spatial <- adj.contact
-      }
+      if (i <= nLR1) { d_spatial <- d.spatial
+      } else { d_spatial <- adj.contact }
+      
       sample.cells <- permutation[ ,i,drop=T]
       Prob.cell.i <- prob.cell_[[i]]
       
@@ -795,6 +788,151 @@ computeAvgCommunProbX <- function(object, group.by = NULL, avg.type = c("avg","s
              Parameter values are stored in `object@options$parameter` <<< [', Sys.time(),']'))
   return(object)
 }
+
+
+#' Compute the communication probability on signaling pathway level by summarizing all related ligands/receptors
+#'
+#' @param object CellChat object
+#' @param net A list from object@net; If net = NULL, net = object@net
+#' @param pairLR.use A dataframe giving the ligand-receptor interactions; If pairLR.use = NULL, pairLR.use = object@LR$LRsig
+#' @param thresh threshold of the p-value for determining significant interaction
+#' @param do.group whether to compute the group-level signaling based on the cell group information in `object@idents`
+#' @param do.cell whether to compute the individual-cell signaling at signaling pathway level. 
+#' This works when "prob.cell" exists in `object@net`.
+#' @param cell.names character vector. 细胞名，需与 `tmp$prob.cell` 各层的行列顺序一致。
+#' 如果输入数据是object, 无需提供, 默认提取colnames(object@data.signaling)`；
+#' 若输入数据为net, `object` 为 `NULL`，则需要提供。
+#' 
+#' @return A CellChat object with updated slot 'netP':
+#' 含 `pathways`, `prob`, `pathways.cell`, `prob.cell`, `tmp`)；
+#' 当 `object = NULL` 时返回 `netP` list。
+#' @export
+computeCommunProbPathwayX <- function(object = NULL, net = NULL, pairLR.use = NULL, 
+                                      thresh = 0.05, do.group = TRUE, do.cell = TRUE, 
+                                      cell.names = NULL) {
+  if (is.null(net)) {
+    if (is.null(object)) { stop(cli.symbol(2), "Please provide either `object` or `net`!") }
+    net <- object@net
+  }
+  
+  if (is.null(pairLR.use)) {
+    if (is.null(object)) { stop(cli.symbol(2), "Please provide either `object` or `pairLR.use`!") }
+    pairLR.use <- object@LR$LRsig
+  }
+  
+  # ---------------- group level ----------------无改动
+  if (do.group) {
+    if (is.null(net$prob)) {stop("Please run `computeAvgCommunProb` to compute the group-level signaling!")}
+    cat(cli.symbol(), "Compute the communication probability between cell groups 
+        at signaling pathway level by summarizing all related ligands/receptors...\n")
+    prob <- net$prob
+    prob[net$pval >= thresh] <- 0
+    pairLR.use <- pairLR.use[rownames(pairLR.use) %in% dimnames(prob)[[3]], , drop = FALSE]  ####
+    pathways <- unique(pairLR.use$pathway_name)
+    
+    group <- factor(pairLR.use$pathway_name, levels = pathways) #####
+    prob.pathways <- aperm(apply(prob, c(1, 2), by, group, sum), c(2, 3, 1))  ####
+    
+    pathways.sig <- pathways[apply(prob.pathways, 3, sum) != 0]
+     # 保留组间通信非零的通路，并按总通信量降序排列
+    prob.pathways.sig <- prob.pathways[, , pathways.sig, drop = FALSE]
+    idx <- sort(apply(prob.pathways.sig, 3, sum), decreasing = TRUE, index.return = TRUE)$ix
+    pathways.sig <- pathways.sig[idx]
+    prob.pathways.sig <- prob.pathways.sig[, , idx, drop = FALSE]
+  } else {
+    pathways.sig <- NULL
+    prob.pathways.sig <- NULL
+  }
+  
+  netP <- list(pathways = pathways.sig, prob = prob.pathways.sig)
+  
+  # ---------------- individual-cell level ----------------
+  if (do.cell) {
+    prob.cell_ <- net$tmp$prob.cell   # a named list；替代原 net$prob.cell
+    pairLR.use <- pairLR.use[rownames(pairLR.use) %in% names(prob.cell_), , drop = FALSE]
+    
+    if (!is.null(prob.cell_)) {
+      
+      pathways <- unique(pairLR.use$pathway_name)
+      nC <- nrow(prob.cell_[[1]])
+      
+      # 细胞名：显式传入优先，其次 object，最后退化为索引
+      if (is.null(cell.names) && !is.null(object)) {
+        cell.names <- colnames(object@data.signaling)
+      }
+      
+      if (is.null(cell.names)) {
+        cell.names <- as.character(seq_len(nrow(prob.cell_[[1]])))
+        message("Cell names are not available; using cell indices as names.")
+      }
+    
+      cat(cli.symbol(), "Compute the communication probability between individual cells 
+          at signaling pathway level by summarizing all related ligands/receptors...\n")
+      
+      gc()
+      
+      # 信号通路下, 所有受体/配体求和
+      prob.all <- pbapply::pbsapply( X = pathways,
+        FUN = function(one_pathway) {
+          one_pathway_LRpair <- rownames(pairLR.use[pairLR.use$pathway_name == one_pathway,,drop=FALSE])
+          prob.cell.i <- prob.cell_[one_pathway_LRpair]  # a list
+          
+          if (length(prob.cell.i) == 0L) {
+            return(Matrix::sparseMatrix(i = integer(0), j = integer(0), x = numeric(0), dims = c(nC, nC))) 
+          }
+        
+          Reduce(`+`, prob.cell.i)   # 同一 pathway 内各 LR 层求和
+        },
+        simplify = FALSE              # 返回 list
+      )
+      
+      names(prob.all) <- pathways
+      
+      # 每个 pathway 的总通信概率：原 marginSumsSparse(MARGIN = 3)
+      prob.sum <- vapply(prob.all, function(m) sum(m@x), numeric(1))
+      names(prob.sum) <- pathways
+      
+      # 注意：filterCommunication 后可能出现全零层，prob.sum = 0 是合法的
+      PathwaySig.use.idx <- which(prob.sum > 0)
+      
+      if (length(PathwaySig.use.idx) == 0L) {
+        cat(cli.symbol(), "No pathway has non-zero individual cell-level communication.\n")
+      } else {
+        idx <- sort(prob.sum[PathwaySig.use.idx], decreasing = TRUE, index.return = TRUE)$ix
+        PathwaySig.sort.idx <- PathwaySig.use.idx[idx]
+        pathways.sig.cell <- pathways[PathwaySig.sort.idx]
+        
+        cat(cli.symbol(), "Subset the pathways with non-zero communication probability and 
+            arrange them in a decreasing order based on the total communication probabilities ...\n")
+        
+        prob.cell.pathways.sig_ <- prob.all[PathwaySig.sort.idx]   # a list
+        names(prob.cell.pathways.sig_) <- pathways.sig.cell
+        prob.cell.pathways.sig <- my_as_sparse3Darray(prob.cell.pathways.sig_) # 3Darray
+        
+        dimnames(prob.cell.pathways.sig) <- list(cell.names, cell.names, pathways.sig.cell)
+        cat(cli.symbol(), "The number of cells and pathways in Dim(prob.cell.pathways) are :",
+            dim(prob.cell.pathways.sig), "\n")
+        
+        Tmp <- list(prob.cell = prob.cell.pathways.sig_)   # important, for parallel iteration
+        netP$pathways.cell <- pathways.sig.cell
+        netP$prob.cell <- prob.cell.pathways.sig
+        netP$tmp <- Tmp
+      }
+    }
+  }
+  
+  # group-level: pathways;prob
+  # individual cell-level: pathways.cell;prob.cell
+  if (is.null(object)) {
+    cat(cli.symbol(1), "Computing the communication probability on signaling pathway level is done. \n")
+    return(netP)
+  } else {
+    object@netP <- netP
+    cat(cli.symbol(1), "Computing the communication probability on signaling pathway level is done. \n")
+    return(object)
+  }
+}
+
 
 
 
