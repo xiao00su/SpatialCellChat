@@ -712,7 +712,7 @@ computeAvgCommunProbX <- function(object, group.by = NULL, avg.type = c("avg","s
     prob.cell_ <- object@net$tmp$prob.cell # a list
   }
   
-  nC <- nrow(prob.cell[[1]])
+  nC <- nrow(prob.cell_[[1]])
   #### LRsig <- dimnames(prob.cell)[[3]]
   LRsig <- names(prob.cell_)
   nLR <- length(LRsig)
