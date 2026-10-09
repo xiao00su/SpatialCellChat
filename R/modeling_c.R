@@ -603,12 +603,8 @@ computeAvgCommunProbX <- function(object, group.by = NULL, avg.type = c("avg","s
   } else {
     if (!(group.by %in% colnames(object@meta))) {
       stop("The 'group.by' is not a column name in the `object@meta`, which will be used for cell grouping.")
-    } else {
-      group <- object@meta[[group.by]]
-    }
-    if (!is.factor(group)) {
-      group <- factor(group)
-    }
+    } else {group <- object@meta[[group.by]]}    
+    if (!is.factor(group)) {group <- factor(group)}
   }
   
   cat(cli.symbol(),"The cell groups used for averaging cell-cell communication are ", cli::col_red(levels(group)), '\n')
@@ -683,9 +679,7 @@ computeAvgCommunProbX <- function(object, group.by = NULL, avg.type = c("avg","s
       dataLR_temp <- cbind(dataLavg[i, ], dataRavg[i, ])
       Prob.avg <- computeAvgCommunProb_LR(prob.cell.i, group = group, dataLR = dataLR_temp, 
                                           min.percent = min.percent, min.cells.sr = min.cells.sr )
-      # Pnull <- as.vector(Prob.avg)
       Prob.avg[pval.colo > thresh.colo] <- 0
-      # Prob: array(0, dim = c(numCluster,numCluster,nLR))
       gc()
       return(Prob.avg)
     },
