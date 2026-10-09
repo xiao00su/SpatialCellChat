@@ -568,7 +568,8 @@ filterCommunicationX <- function(object, min.cells = 10, min.links = 5, min.cell
 
 
 #' Compute group-level cell-cell communication
-#'
+#' 算法原理: 将每LRpair的每个细胞通讯概率(net$tmp$.prob.cell下的一个元素matrix), 
+#' 将cell cluster 内所有细胞的通讯概率sum|mean, 每个LRpair生成一个以cell cluster为行列名的matrix
 #' @param object SpatialCellChat object with communication probabilities for pairwise individual cells
 #' @param group.by cell group information used for computing average communication probabilities
 #' @param avg.type methods for integrating communication probabilities per cell group
@@ -619,19 +620,6 @@ computeAvgCommunProbX <- function(object, group.by = NULL, avg.type = c("avg","s
          `meta$labels = droplevels(meta$labels, exclude = setdiff(levels(meta$labels),unique(meta$labels)))`")
   }
   
-  if (object@options$parameter$raw.use) {
-    data <- object@data.signaling
-    # scale the elements
-    data@x <- data@x/max(data@x)
-    data.use <- as.matrix(data)
-  } else {
-    data <- object@data.project
-    # scale
-    data.use <- data/max(data)
-  }
-  
-  nC <- ncol(data.use)
-  
   #### if ( is.null(object@net$prob.cell) ) {
   if ( is.null(object@net$tmp) ) {
     stop(cli.symbol(2),"Please run `computeCommunProb` to compute 
@@ -641,6 +629,7 @@ computeAvgCommunProbX <- function(object, group.by = NULL, avg.type = c("avg","s
     prob.cell_ <- object@net$tmp$prob.cell # a list
   }
   
+  nC <- nrow(prob.cell[[1]])
   #### LRsig <- dimnames(prob.cell)[[3]]
   LRsig <- names(prob.cell_)
   nLR <- length(LRsig)
