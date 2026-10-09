@@ -790,61 +790,52 @@ computeAvgCommunProbX <- function(object, group.by = NULL, avg.type = c("avg","s
   if (do.permutation) {
     cat(paste0(cli.symbol(),'Perform permutation test for group-level communication... <<< [', Sys.time(),']'),'\n')
     permutation <- replicate(nboot, sample.int(nC, size = nC))
+    
+    # compute the average signaling per cell group after permutation
     Pval_ <- my_future_lapply(
-      # LRsig.use.idx is a numeric vector
-      X = seq_len(length(LRsig.use.idx)),
-      FUN = function(x){
-        i <- LRsig.use.idx[[x]]
-        # compute the average signaling per cell group after permutation
-        prob.cell.i <- prob.cell_[[i]]
-        dataLR_temp <- cbind(dataLavg[i,], dataRavg[i,])
-        Pnull <- as.vector(Prob[ , , i])
-        
-        Pboot <- sapply(
-          X = 1:nboot,
-          FUN = function(nE) {
-            groupboot <- group[permutation[, nE]]
-            Pboot.avg <- computeAvgCommunProb_LR(
-              prob.cell.i,
-              group = groupboot,
-              dataLR = dataLR_temp,
-              min.percent = min.percent,
-              min.cells.sr = min.cells.sr
-            )
-            return(as.vector(Pboot.avg))
-          }
-        )
-        gc()
-        Pboot <- matrix(unlist(Pboot), nrow=length(Pnull), ncol = nboot, byrow = FALSE)
-        nReject <- rowSums(Pboot - Pnull > 0)
-        p = nReject/nboot
-        Pval.i <- matrix(p, nrow = numCluster, ncol = numCluster, byrow = FALSE)
-        return(Pval.i)
-      },
+      X = seq_len(length(LRsig.use.idx)), # LRsig.use.idx is a numeric vector
+      FUN = function(x){i <- LRsig.use.idx[[x]]
+                        prob.cell.i <- prob.cell_[[i]]
+                        dataLR_temp <- cbind(dataLavg[i,], dataRavg[i,])
+                        Pnull <- as.vector(Prob[ , , i])
+                        
+                        Pboot <- sapply( X = 1:nboot, FUN = function(nE) {
+                          groupboot <- group[permutation[, nE]]
+                          Pboot.avg <- computeAvgCommunProb_LR(prob.cell.i, group = groupboot,
+                                                               dataLR = dataLR_temp,
+                                                               min.percent = min.percent, 
+                                                               min.cells.sr = min.cells.sr )  
+                          return(as.vector(Pboot.avg)) } )
+                        
+                        gc()
+                        
+                        Pboot <- matrix(unlist(Pboot), nrow=length(Pnull), ncol = nboot, byrow = FALSE)
+                        nReject <- rowSums(Pboot - Pnull > 0)
+                        p = nReject/nboot
+                        Pval.i <- matrix(p, nrow = numCluster, ncol = numCluster, byrow = FALSE)
+                        return(Pval.i) },
+      
       simplify = F, # return a list
-      hint.message = "do permutation..."
-    )
+      hint.message = "do permutation..." )
     
     for (x in seq_len(length(LRsig.use.idx))) {
-      # get correct index
-      i <- LRsig.use.idx[[x]]
-      # update the values
-      Pval[ , , i] <- Pval_[[x]]
+      i <- LRsig.use.idx[[x]]       # get correct index
+      Pval[ , , i] <- Pval_[[x]]    # update the values
     }
     
-    Pval[Prob == 0] <- 1
-    
+    Pval[Prob == 0] <- 1    
   } else { Pval <- NULL }
   
   # Pval[Prob == 0] <- 1
   # dimnames(Prob) <- list(levels(group), levels(group), rownames(pairLRsig))
   # dimnames(Pval) <- dimnames(Prob)
+  
   object@net$prob <- Prob
   object@net$pval <- Pval
+  
   object@options$parameter$min.percent <- min.percent
   object@options$parameter$min.cells.sr <- min.cells.sr
-  object@options$parameter$do.permutation <- do.permutation
-  
+  object@options$parameter$do.permutation <- do.permutation  
   object@options$parameter$nboot <- nboot
   object@options$parameter$avg.type <- avg.type
   object@options$parameter$seed.use <- seed.use
