@@ -625,12 +625,13 @@ computeAvgCommunProb_LR_AvgX <- function (prob, group, dataLR = NULL, min.percen
 computeAvgCommunProb_LR_SumX <- function (prob, group, dataLR = NULL,
                                           min.percent = 0.1, min.cells.sr = 5) {
   if (!is.factor(group)) group <- factor(group)
-  gi <- as.integer(group)
+  gi <- as.integer(group); G <- nlevels(group); N <- nrow(prob)
   
-  cell.type.mat <- model.matrix(~group-1)                      # ← 保留原版
+  # cell.type.mat <- model.matrix(~group-1)                      
+  Zs <- Matrix::sparseMatrix(i = seq_len(N), j = gi, x = 1, dims = c(N, G))
   
   d01 <- 1 * (dataLR > 0)
-  m   <- cbind(tapply(d01[, 1], gi, mean), tapply(d01[, 2], gi, mean))   # ← 替换 aggregate
+  m   <- cbind(tapply(d01[, 1], gi, mean), tapply(d01[, 2], gi, mean))   
   dataLR_percent <- 1 * (format(as.data.frame(m), digits = 1) >= min.percent)
   Prob_percent <- Matrix::crossprod(matrix(dataLR_percent[, 1], nrow = 1),
                                     matrix(dataLR_percent[, 2], nrow = 1))
@@ -638,19 +639,19 @@ computeAvgCommunProb_LR_SumX <- function (prob, group, dataLR = NULL,
   if (sum(Prob_percent) == 0) {
     Prob.avg <- Prob_percent
   } else {
-    Prob.avg <- Matrix::crossprod(x = cell.type.mat, y = prob %*% cell.type.mat)  # ← 保留原版
-    
+    # Prob.avg <- Matrix::crossprod(x = cell.type.mat, y = prob %*% cell.type.mat)  
+    Prob.avg <- Matrix::crossprod(Zs, prob) %*% Zs 
     pb <- prob; pb@x <- rep.int(1, times = length(pb@x))
-    cs <- rowsum(cbind(Matrix::rowSums(pb), Matrix::colSums(pb)), group, reorder = TRUE)  # ← 替换 aggregate
+    cs <- rowsum(cbind(Matrix::rowSums(pb), Matrix::colSums(pb)), group, reorder = TRUE) 
     cs <- 1 * (cs >= min.cells.sr)
-    cells.sr <- Matrix::crossprod(matrix(cs[, 1], nrow = 1),
-                                  matrix(cs[, 2], nrow = 1))
-    
+    cells.sr <- Matrix::crossprod(matrix(cs[, 1], nrow = 1), matrix(cs[, 2], nrow = 1))
+     
     Prob.avg <- Prob.avg * Prob_percent * cells.sr
   }
   dimnames(Prob.avg) <- list(levels(group), levels(group))
   as.matrix(Prob.avg)
 }
+
 
 #' Compute group-level cell-cell communication
 #' 算法原理: 将每LRpair的每个细胞通讯概率(net$tmp$.prob.cell下的一个元素matrix), 
