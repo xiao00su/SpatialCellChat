@@ -607,6 +607,51 @@ computeAvgCommunProb_LR_AvgX <- function (prob, group, dataLR = NULL, min.percen
   as.matrix(Prob.avg)
 }
 
+#' Compute average communication probabilities of pairwise cell groups for 
+#' one particular ligand-receptor pair/signaling pathway
+#'
+#' @param prob a matrix of communication probabilities for pairwise individual cells 
+#' for one particular ligand-receptor pair/signaling pathway
+#' @param dataLR a nCell*2 data matrix of a given pair of ligand-receptor.
+#' @param group Character vector. Cell group information used for computing averaged communication probabilities
+#' @param min.percent Numeric from 0 to 1. Minimum percentage of expressed ligands or receptors 
+#' per cell group to require for computing the group-level signaling. Default is 0.1.
+#' @param min.cells.sr Integer greater than 0. Minimum number of cells required 
+#' as senders or receivers per cell group for computing the group-level signaling. 
+#' Default is 5.
+#'
+#' @return Returns a matrix containing the interaction weights between any two cell groups.
+#' @export
+computeAvgCommunProb_LR_SumX <- function (prob, group, dataLR = NULL,
+                                          min.percent = 0.1, min.cells.sr = 5) {
+  if (!is.factor(group)) group <- factor(group)
+  gi <- as.integer(group)
+  
+  cell.type.mat <- model.matrix(~group-1)                      # ← 保留原版
+  
+  d01 <- 1 * (dataLR > 0)
+  m   <- cbind(tapply(d01[, 1], gi, mean), tapply(d01[, 2], gi, mean))   # ← 替换 aggregate
+  dataLR_percent <- 1 * (format(as.data.frame(m), digits = 1) >= min.percent)
+  Prob_percent <- Matrix::crossprod(matrix(dataLR_percent[, 1], nrow = 1),
+                                    matrix(dataLR_percent[, 2], nrow = 1))
+  
+  if (sum(Prob_percent) == 0) {
+    Prob.avg <- Prob_percent
+  } else {
+    Prob.avg <- Matrix::crossprod(x = cell.type.mat, y = prob %*% cell.type.mat)  # ← 保留原版
+    
+    pb <- prob; pb@x <- rep.int(1, times = length(pb@x))
+    cs <- rowsum(cbind(Matrix::rowSums(pb), Matrix::colSums(pb)), group, reorder = TRUE)  # ← 替换 aggregate
+    cs <- 1 * (cs >= min.cells.sr)
+    cells.sr <- Matrix::crossprod(matrix(cs[, 1], nrow = 1),
+                                  matrix(cs[, 2], nrow = 1))
+    
+    Prob.avg <- Prob.avg * Prob_percent * cells.sr
+  }
+  dimnames(Prob.avg) <- list(levels(group), levels(group))
+  as.matrix(Prob.avg)
+}
+
 #' Compute group-level cell-cell communication
 #' 算法原理: 将每LRpair的每个细胞通讯概率(net$tmp$.prob.cell下的一个元素matrix), 
 #' 将cell cluster 内所有细胞的通讯概率sum|mean, 每个LRpair生成一个以cell cluster为行列名的matrix
@@ -680,7 +725,7 @@ computeAvgCommunProbX <- function(object, group.by = NULL, avg.type = c("avg","s
   
   avg.type <- match.arg(avg.type)
   if(avg.type=="avg"){ computeAvgCommunProb_LR <- computeAvgCommunProb_LR_AvgX
-  } else if (avg.type=="sum"){ computeAvgCommunProb_LR <- computeAvgCommunProb_LR_Sum }
+  } else if (avg.type=="sum"){ computeAvgCommunProb_LR <- computeAvgCommunProb_LR_SumX }
   
   gc()
   
