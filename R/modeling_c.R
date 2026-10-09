@@ -657,7 +657,8 @@ computeAvgCommunProb_LR_SumX <- function (prob, group, dataLR = NULL,
 #' 将cell cluster 内所有细胞的通讯概率sum|mean, 每个LRpair生成一个以cell cluster为行列名的matrix
 #' @param object SpatialCellChat object with communication probabilities for pairwise individual cells
 #' @param group.by cell group information used for computing average communication probabilities
-#' @param avg.type methods for integrating communication probabilities per cell group
+#' @param avg.type methods for integrating communication probabilities per cell group.
+#' sum:总通讯量; avg: 每条连接的平均强度
 #' @param type methods for computing the average gene expression per cell group.
 #' By default = "triMean", defined as a weighted average of the distribution's median and 
 #' its two quartiles (https://en.wikipedia.org/wiki/Trimean); 
