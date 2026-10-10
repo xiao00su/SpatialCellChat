@@ -601,7 +601,7 @@ computeAvgCommunProb_LR_AvgX <- function (prob, group, dataLR = NULL, min.percen
     # Prob.scale.factor <- Matrix::crossprod(Z, pb) %*% Z #### 分组计算,任意两组细胞通讯的总次数
     
     # 更合理的是计算组内细胞的平均强度,将强度之和/组细胞数据
-    Prob.scale.factor <- table(group) %>% as.vector()
+    Prob.scale.factor <- as.vector(table(group))
     
     Prob.avg <- Prob.avg / Prob.scale.factor
     Prob.avg[is.nan(Prob.avg)] <- 0
