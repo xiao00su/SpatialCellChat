@@ -592,11 +592,12 @@ computeAvgCommunProb_LR_AvgX <- function (prob, group, dataLR = NULL, min.percen
     Prob.avg <- Pp
   } else {
     Prob.avg <- Matrix::crossprod(Z, prob) %*% Z
+    pb <- prob; pb@x <- rep.int(1, length(pb@x)) # 不为0的地方 设为1, 判断是否通讯, 忽略信号强度
+    
     # 这个缩放因子的计算不合理:
     # 假设组A和组B之间只发生了1次通讯, 其强度为10, 组A和组B的平均强度为10
     # 假设组A和组C之间发生了1000此通讯, 有许多为弱通讯, 其平均强度为5
     # 如此,A和B的平均强度反倒比B高, 这是不合理的
-    # pb <- prob; pb@x <- rep.int(1, length(pb@x)) # 不为0的地方 设为1, 判断是否通讯, 忽略信号强度
     # Prob.scale.factor <- Matrix::crossprod(Z, pb) %*% Z #### 分组计算,任意两组细胞通讯的总次数
     
     # 更合理的是计算组内细胞的平均强度,将强度之和/组细胞数据
