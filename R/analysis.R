@@ -2671,7 +2671,8 @@ netAnalysis_signalingRole_scatter <- function(object, signaling = NULL, color.us
   outgoing.cells <- rowSums(outgoing)
   incoming.cells <- rowSums(incoming)
 
-  num.link <- aggregateNet(object, signaling = signaling, return.object = FALSE, remove.isolate = FALSE)$count
+  ##### num.link <- aggregateNet(object, signaling = signaling, return.object = FALSE, remove.isolate = FALSE)$count
+  num.link <- aggregateNetX(object, signaling = signaling, return.object = FALSE, remove.isolate = FALSE)$count
   num.link <- rowSums(num.link) + colSums(num.link)-diag(num.link)
   df <- data.frame(x = outgoing.cells, y = incoming.cells, labels = names(incoming.cells),
                    Count = num.link)
